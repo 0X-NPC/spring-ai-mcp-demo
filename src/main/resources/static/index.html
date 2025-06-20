@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPRING AI MCP</title>
+    <script src="/js/tailwind-3.4.16.js"></script>
+    <style>
+        /* Custom scrollbar styles */
+        .chat-box::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .chat-box::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 3px;
+        }
+
+        .chat-box::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 3px;
+        }
+
+        .chat-box::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        /* Inter font */
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        /* Typing indicator effect */
+        @keyframes typing {
+            0%, 20% {
+                opacity: 0.4;
+            }
+            50% {
+                opacity: 1;
+            }
+            100% {
+                opacity: 0.4;
+            }
+        }
+
+        .typing-indicator {
+            animation: typing 1.5s infinite;
+        }
+
+        /* Message fade-in animation */
+        .message-fade-in {
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Connection status indicator */
+        .connection-status {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+
+        .status-connecting {
+            background-color: #f59e0b;
+            animation: pulse 2s infinite;
+        }
+
+        .status-connected {
+            background-color: #10b981;
+        }
+
+        .status-error {
+            background-color: #ef4444;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        /* Tooltip styles */
+        .tooltip {
+            position: relative;
+            display: inline-block;
+            cursor: help;
+        }
+
+        .tooltip .tooltiptext {
+            visibility: hidden;
+            width: 200px;
+            background-color: #333;
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 5px 0;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%; /* Position above the text */
+            left: 50%;
+            margin-left: -100px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .tooltip .tooltiptext::after {
+            content: "";
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            margin-left: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: #333 transparent transparent transparent;
+        }
+
+        .tooltip:hover .tooltiptext {
+            visibility: visible;
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen font-sans p-4">
+
+<div class="w-full max-w-2xl h-[90vh] bg-white rounded-lg shadow-xl flex flex-col">
+    <header class="bg-blue-600 text-white p-4 rounded-t-lg">
+        <div class="flex items-center justify-between">
+            <h1 class="text-xl font-bold">智能助手</h1>
+            <div class="flex items-center text-sm">
+                <span id="connection-status" class="connection-status status-connected"></span>
+                <span id="connection-text">已就绪</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- MCP Capabilities Display Area -->
+    <div id="mcp-capabilities" class="p-4 bg-gray-50 border-b border-gray-200 text-gray-700 text-sm">
+        <div class="flex items-center justify-between mb-2">
+            <h2 class="font-semibold">MCP信息</h2>
+            <button id="toggle-capabilities" class="text-blue-600 hover:text-blue-800">
+                <span id="toggle-icon">▼</span>
+            </button>
+        </div>
+        <div id="capabilities-content" class="space-y-1 hidden">
+            <p><strong>协议版本:</strong> <span id="protocol-version">N/A</span></p>
+            <p><strong>会话 ID:</strong> <span id="session-id">N/A</span></p>
+            <p><strong>服务器信息:</strong> <span id="server-info">N/A</span></p> <!-- New span for server info -->
+            <div id="capabilities-list-section" class="mt-2"> <!-- New section for capabilities -->
+                <p class="font-medium">支持的能力:</p>
+                <ul id="capabilities-list" class="list-disc pl-5">
+                    <li>无可用能力</li>
+                </ul>
+            </div>
+            <div id="tools-info" class="mt-2">
+                <p class="font-medium">支持的工具:</p>
+                <ul id="tools-list" class="list-disc pl-5">
+                    <li id="no-tools-message">无可用工具</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chat message display area -->
+    <main id="chat-box" class="flex-1 p-6 overflow-y-auto chat-box">
+        <!-- Initial welcome message -->
+        <div class="flex items-start gap-3 mb-4 message-fade-in">
+            <div class="bg-blue-600 text-white p-2 rounded-full text-sm font-bold min-w-[32px] h-8 flex items-center justify-center">
+                AI
+            </div>
+            <div class="bg-gray-200 p-3 rounded-lg max-w-[80%] rounded-tl-none">
+                <p>您好！我是智能助手，有什么可以帮助您的吗？</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- Input area -->
+    <footer class="p-4 border-t border-gray-200 rounded-b-lg">
+        <div id="loading" class="hidden text-center text-gray-500 mb-2">
+            <span class="typing-indicator">●</span>
+            <span class="typing-indicator" style="animation-delay: 0.2s;">●</span>
+            <span class="typing-indicator" style="animation-delay: 0.4s;">●</span>
+            <span class="ml-2">AI 正在思考...</span>
+        </div>
+        <div class="flex items-center gap-3">
+            <input type="text" id="message-input" placeholder="请输入您的问题..."
+                   class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                   maxlength="1000">
+            <button id="send-button"
+                    class="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors min-w-[80px]">
+                发送
+            </button>
+        </div>
+        <div class="text-xs text-gray-500 mt-2 text-center">
+            按 Enter 发送消息，最多支持 1000 个字符
+            <span class="char-count float-right">1000/1000</span>
+        </div>
+    </footer>
+</div>
+
+<script>
+    // --- DOM element acquisition ---
+    const chatBox = document.getElementById('chat-box');
+    const messageInput = document.getElementById('message-input');
+    const sendButton = document.getElementById('send-button');
+    const loadingIndicator = document.getElementById('loading');
+    const connectionStatus = document.getElementById('connection-status');
+    const connectionText = document.getElementById('connection-text');
+
+    const toggleCapabilitiesButton = document.getElementById('toggle-capabilities');
+    const toggleIcon = document.getElementById('toggle-icon');
+    const capabilitiesContent = document.getElementById('capabilities-content');
+    const protocolVersionSpan = document.getElementById('protocol-version');
+    const sessionIdSpan = document.getElementById('session-id');
+    const serverInfoSpan = document.getElementById('server-info'); // New element
+    const capabilitiesListUl = document.getElementById('capabilities-list'); // New element
+    const toolsListUl = document.getElementById('tools-list');
+    const noToolsMessageLi = document.getElementById('no-tools-message');
+
+    // Generate a unique chat session ID
+    const chatId = crypto.randomUUID();
+
+    // Global variables
+    let isProcessing = false;
+    let currentEventSource = null;
+    let currentEndpoint = null;
+    let currentSSE = null;
+    let currentSessionId = null;
+
+
+    // --- SSE Manager Class ---
+    class SSEManager {
+        /**
+         * Creates a new SSE connection or replaces the existing one.
+         * @param {string} chatId - The chat ID.
+         * @param {string} message - The message to send.
+         * @param {object} callbacks - Object containing onMessage, onError, onOpen, onClose callbacks.
+         * @returns {EventSource|null} The created EventSource object, or null if an error occurred.
+         */
+        createConnection(chatId, message, callbacks) {
+            // Close any existing connection before creating a new one
+            this.closeCurrentConnection();
+
+            const {onMessage, onError, onOpen, onClose} = callbacks;
+            const url = `/chat?chatId=${chatId}&message=${encodeURIComponent(message)}`;
+
+            try {
+                const eventSource = new EventSource(url);
+                currentEventSource = eventSource;
+
+                eventSource.onopen = (event) => {
+                    console.log('SSE connection established');
+                    this.updateConnectionStatus('connected', '已连接');
+                    if (onOpen) onOpen(event);
+                };
+
+                eventSource.onmessage = (event) => {
+                    if (onMessage) onMessage(event);
+                };
+
+                eventSource.onerror = (event) => {
+                    console.error('SSE connection error:', event);
+
+                    // Check if it's an automatic reconnect attempt
+                    if (eventSource.readyState === EventSource.CONNECTING) {
+                        this.updateConnectionStatus('connecting', '重连中...');
+                        return; // EventSource will attempt to reconnect automatically
+                    }
+
+                    // If not connecting, it's a definitive error
+                    this.updateConnectionStatus('error', '连接失败');
+                    if (onError) onError(event);
+                    this.closeCurrentConnection(); // Close and clean up on definitive error
+                };
+
+                // Override close method to ensure status update and cleanup
+                const originalClose = eventSource.close;
+                eventSource.close = () => {
+                    originalClose.call(eventSource);
+                    console.log('SSE connection closed');
+                    this.updateConnectionStatus('connected', '已就绪');
+                    currentEventSource = null; // Clear the reference
+                    if (onClose) onClose();
+                };
+
+                return eventSource;
+
+            } catch (error) {
+                console.error('Failed to create SSE connection:', error);
+                this.updateConnectionStatus('error', '连接失败');
+                if (callbacks.onError) callbacks.onError(error);
+                currentEventSource = null;
+                return null;
+            }
+        }
+
+        /**
+         * Closes the currently active SSE connection.
+         */
+        closeCurrentConnection() {
+            if (currentEventSource && currentEventSource.readyState !== EventSource.CLOSED) {
+                currentEventSource.close();
+            }
+            currentEventSource = null; // Ensure the reference is cleared
+        }
+
+        /**
+         * Updates the connection status UI.
+         * @param {string} status - 'connecting', 'connected', or 'error'.
+         * @param {string} text - The text to display for the status.
+         */
+        updateConnectionStatus(status, text) {
+            connectionStatus.className = `connection-status status-${status}`;
+            connectionText.textContent = text;
+        }
+
+        /**
+         * Gets the readyState of the current connection.
+         * @returns {number} The readyState of the EventSource.
+         */
+        getConnectionState() {
+            return currentEventSource ? currentEventSource.readyState : EventSource.CLOSED;
+        }
+    }
+
+    // Create SSE manager instance
+    const sseManager = new SSEManager();
+
+    // --- Core Functions ---
+    function connectSSE() {
+        currentSSE = new EventSource('/sse');
+
+        currentSSE.onopen = function (event) {
+            console.log('SSE connection established');
+        };
+
+        currentSSE.addEventListener('endpoint', function (event) {
+            // Directly use event.data as the endpoint URL
+            currentEndpoint = event.data;
+            // Extract sessionId from the URL
+            const urlParams = new URLSearchParams(currentEndpoint.split('?')[1]);
+            currentSessionId = urlParams.get('sessionId');
+
+            sessionIdSpan.textContent = currentSessionId || 'N/A';
+            console.log('Received endpoint and sessionId:', currentEndpoint, currentSessionId);
+
+            // send initialize message
+            sendMCPInitialize();
+        });
+
+        currentSSE.onmessage = function (event) {
+            try {
+                console.log('Received SSE message:', event);
+                const data = JSON.parse(event.data);
+                // 处理 JSON-RPC 响应
+                handleJsonRpcResponse(data);
+            } catch (error) {
+                console.error('Error parsing SSE message:', error);
+            }
+        };
+
+        currentSSE.onerror = (error) => {
+            console.error("EventSource 发生错误:", error);
+        };
+    }
+
+    /**
+     * SSE JSON-RPC 响应消息处理
+     *
+     * @param response
+     * @returns {Promise<void>}
+     */
+    async function handleJsonRpcResponse(response) {
+        console.log('处理 JSON-RPC 响应:', response);
+        // 检查是否是 JSON-RPC 响应格式
+        if (response.jsonrpc && response.id !== undefined) {
+            if (response.error) {
+                console.error('JSON-RPC 错误:', response.error);
+                return;
+            }
+            // 根据响应结果判断是什么类型的响应
+            if (response.result) {
+                // 初始化响应
+                if (response.id === 1 && response.result.protocolVersion) {
+                    console.log('MCP 初始化成功:', response.result);
+                    // 展示MCP服务详情
+                    displayMcpServerInfo(response.result);
+
+                    // 初始化成功后发送 initialized 通知
+                    await sendMCPInitializedNotification();
+                }
+                // 工具列表响应
+                else if (response.id === 2 && response.result.tools) {
+                    console.log('获取到工具列表:', response.result.tools);
+                    displayTools(response.result.tools);
+
+                    // 工具列表加载完成，主动关闭
+                    currentSSE.close();
+                }
+                // 其他响应
+                else {
+                    console.log('其他 JSON-RPC 响应:', response.result);
+                }
+            }
+        } else {
+            // 处理非 JSON-RPC 格式的 SSE 消息
+            console.log('非 JSON-RPC SSE 消息:', response);
+        }
+    }
+
+    /**
+     * 发送初始化消息
+     *
+     * @returns {Promise<void>}
+     */
+    async function sendMCPInitialize() {
+        try {
+            console.log('发送MCP初始化消息...');
+            const payload = {
+                jsonrpc: "2.0",
+                id: 1,
+                method: "initialize",
+                params: {
+                    protocolVersion: "2024-11-05",
+                    capabilities: {},
+                    clientInfo: {
+                        name: "mcp-client",
+                        version: "1.0.0"
+                    }
+                }
+            };
+
+            const response = await fetch(currentEndpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('初始化请求失败:', response.status, errorText);
+                throw new Error(`初始化请求失败: ${response.status} - ${errorText}`);
+            }
+
+            // 不处理响应体，响应会通过 SSE 接收
+            console.log('初始化请求已发送，等待 SSE 响应...');
+        } catch (error) {
+            console.error("发送初始化消息时出错:", error);
+        }
+    }
+
+    /**
+     * 发送 MPC initialized 通知
+     *
+     * @returns {Promise<void>}
+     */
+    async function sendMCPInitializedNotification() {
+        try {
+            console.log('发送 MCP initialized 通知到:', currentEndpoint);
+            const payload = {
+                jsonrpc: "2.0",
+                method: "notifications/initialized",
+                params: {}
+            };
+
+            const response = await fetch(currentEndpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('initialized 通知发送失败:', response.status, errorText);
+                throw new Error(`initialized 通知发送失败: ${response.status} - ${errorText}`);
+            }
+            console.log('initialized 通知已成功发送。');
+        } catch (error) {
+            console.error('发送 initialized 通知时出错:', error);
+        }
+    }
+
+    /**
+     * Load Tools List
+     * @returns {Promise<void>}
+     */
+    async function fetchToolsList() {
+        const payload = {
+            jsonrpc: "2.0",
+            id: 2,
+            method: "tools/list"
+        };
+
+        try {
+            const response = await fetch(currentEndpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('工具列表请求失败:', response.status, errorText);
+                throw new Error(`工具列表请求失败: ${response.status} - ${errorText}`);
+            }
+
+            // 不处理响应体，响应会通过 SSE 接收
+            console.log('工具列表请求已发送，等待 SSE 响应...');
+
+        } catch (error) {
+            console.error('Error fetching tools:', error);
+        }
+    }
+
+    /**
+     * 展示MCP服务能力信息
+     * @param data
+     */
+    function displayMcpServerInfo(data) {
+        protocolVersionSpan.textContent = data.protocolVersion || 'N/A';
+        serverInfoSpan.textContent = `${data.serverInfo?.name || 'N/A'} (${data.serverInfo?.version || 'N/A'})`;
+
+        // 展示能力信息
+        displayCapabilities(data.capabilities);
+
+        // 获取工具列表
+        const hasTools = !!data.capabilities?.tools;
+        if (hasTools) {
+            fetchToolsList();
+        }
+    }
+
+    /**
+     * Displays the fetched capabilities in the UI.
+     * @param {object} capabilities - An object containing capability categories.
+     */
+    function displayCapabilities(capabilities) {
+        capabilitiesListUl.innerHTML = '';
+        if (capabilities && Object.keys(capabilities).length > 0) {
+            for (const capabilityName in capabilities) {
+                const li = document.createElement('li');
+                li.className = 'mb-1';
+                li.innerHTML = `<span class="font-medium">${escapeHtml(capabilityName)}</span>`;
+                capabilitiesListUl.appendChild(li);
+            }
+        } else {
+            const li = document.createElement('li');
+            li.textContent = '无可用能力';
+            capabilitiesListUl.appendChild(li);
+        }
+    }
+
+    /**
+     * Displays the fetched tools in the UI.
+     * @param {Array} tools - An array of tool objects.
+     */
+    function displayTools(tools) {
+        toolsListUl.innerHTML = '';
+        if (tools && tools.length > 0) {
+            noToolsMessageLi.classList.add('hidden');
+            tools.forEach(tool => {
+                const li = document.createElement('li');
+                li.className = 'mb-1';
+                let tooltipContent = `<strong>描述:</strong> ${escapeHtml(tool.description || '无')}`;
+                if (tool.inputSchema && tool.inputSchema.properties) {
+                    tooltipContent += '<br><strong>参数:</strong>';
+                    for (const paramName in tool.inputSchema.properties) {
+                        const param = tool.inputSchema.properties[paramName];
+                        // 检查参数是否有 description 属性
+                        const paramDescription = param.description ? ` (${escapeHtml(param.description)})` : '';
+                        tooltipContent += `<br>- ${escapeHtml(paramName)}: ${escapeHtml(param.type || 'unknown')}${paramDescription}`;
+
+                        // 如果有 required 属性，显示出来
+                        if (tool.inputSchema.required && tool.inputSchema.required.includes(paramName)) {
+                            tooltipContent += ' <span class="text-red-300">(必填)</span>';
+                        }
+                    }
+                } else {
+                    tooltipContent += '<br><strong>参数:</strong> 无';
+                }
+
+                li.innerHTML = `
+                    <span class="font-medium">${escapeHtml(tool.name)}</span>
+                    <span class="tooltip text-blue-500 text-xs ml-1">
+                        (详情)
+                        <span class="tooltiptext text-left p-2 break-words">${tooltipContent}</span>
+                    </span>`;
+                toolsListUl.appendChild(li);
+            });
+        } else {
+            noToolsMessageLi.classList.remove('hidden');
+            toolsListUl.appendChild(noToolsMessageLi);
+        }
+    }
+
+    /**
+     * Main function to send messages.
+     */
+    async function sendMessage() {
+        const messageText = messageInput.value.trim();
+        if (!messageText || isProcessing) return;
+
+        // Prevent duplicate submission
+        isProcessing = true;
+        setUiLoading(true);
+
+        // Display user message
+        createMessageElement('user', messageText);
+        messageInput.value = '';
+        updateCharCount(); // Update character count after clearing input
+
+        let aiMessagePElement = null;
+        let messageBuffer = ''; // For accumulating text chunks
+
+        const callbacks = {
+            onOpen: (event) => {
+                sseManager.updateConnectionStatus('connected', '正在响应...');
+            },
+
+            onMessage: (event) => {
+                const data = event.data
+                // Check for end markers
+                if (!data || data === '[DONE]' || data === 'DONE') {
+                    console.log('Received DONE signal, closing connection.');
+                    sseManager.closeCurrentConnection(); // Explicitly close on DONE
+                    isProcessing = false;
+                    setUiLoading(false);
+                    return;
+                }
+
+                // Create AI message element if not already created
+                if (!aiMessagePElement) {
+                    aiMessagePElement = createMessageElement('ai', '');
+                }
+
+                // Process data
+                try {
+                    let textContent = data;
+                    if (textContent) {
+                        // Logic to add a space if needed
+                        if (messageBuffer.length > 0 &&
+                            messageBuffer[messageBuffer.length - 1] !== ' ' &&
+                            textContent[0] !== ' ') {
+                            messageBuffer += ' '; // Add a space
+                        }
+                        messageBuffer += textContent;
+                        updateMessageContent(aiMessagePElement, messageBuffer);
+                        scrollToBottom();
+                    }
+                } catch (error) {
+                    console.error('Error processing message data:', error);
+                }
+            },
+
+            onError: (event) => {
+                console.error('SSE connection error in callback:', event);
+                isProcessing = false;
+                setUiLoading(false);
+
+                if (!aiMessagePElement) {
+                    createMessageElement('error', 'SSE 连接失败或中断，请重试');
+                } else {
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'text-red-500 text-xs mt-2';
+                    errorDiv.textContent = '连接中断，消息可能不完整。请尝试重新发送。';
+                    aiMessagePElement.parentElement.appendChild(errorDiv);
+                }
+                sseManager.closeCurrentConnection(); // Ensure connection is closed on error
+            },
+
+            onClose: () => {
+                console.log('SSE connection closed gracefully.');
+                // Only reset processing if it wasn't already handled by [DONE] or onError
+                if (isProcessing) {
+                    isProcessing = false;
+                    setUiLoading(false);
+                    sseManager.updateConnectionStatus('connected', '已就绪');
+                    // If no message was received, show a prompt
+                    if (!aiMessagePElement) {
+                        createMessageElement('error', '未收到回复，请重试');
+                    }
+                }
+            }
+        };
+
+        // Create connection
+        const eventSource = sseManager.createConnection(chatId, messageText, callbacks);
+
+        if (!eventSource) {
+            isProcessing = false;
+            setUiLoading(false);
+            createMessageElement('error', '无法建立连接，请检查网络后重试');
+        }
+    }
+
+    /**
+     * Updates message content (supports basic Markdown formatting).
+     */
+    function updateMessageContent(element, content) {
+        if (!element || !content) return;
+
+        // Simple text processing, preserve newlines, basic Markdown
+        const processedContent = content
+            .replace(/\n/g, '<br>')
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*(.*?)\*/g, '<em>$1</em>')
+            .replace(/`(.*?)`/g, '<code style="background-color: #f1f5f9; padding: 2px 4px; border-radius: 3px; font-family: monospace;">$1</code>');
+
+        element.innerHTML = processedContent;
+    }
+
+    /**
+     * Creates and appends a message element to the chat box.
+     */
+    function createMessageElement(role, text) {
+        const messageWrapper = document.createElement('div');
+        messageWrapper.className = 'mb-4 message-fade-in';
+
+        let messageContent;
+        let pElement = null;
+
+        if (role === 'user') {
+            messageWrapper.className += ' flex items-start gap-3 justify-end';
+            messageContent = `
+                <div class="bg-blue-500 text-white p-3 rounded-lg max-w-[80%] rounded-tr-none">
+                    <p>${escapeHtml(text)}</p>
+                </div>
+                <div class="bg-gray-300 text-black p-2 rounded-full text-sm font-bold min-w-[32px] h-8 flex items-center justify-center">我</div>`;
+        } else if (role === 'ai') {
+            messageWrapper.className += ' flex items-start gap-3';
+            messageContent = `
+                <div class="bg-blue-600 text-white p-2 rounded-full text-sm font-bold min-w-[32px] h-8 flex items-center justify-center">AI</div>
+                <div class="bg-gray-200 p-3 rounded-lg max-w-[80%] rounded-tl-none">
+                    <div class="ai-message-content"></div>
+                </div>`;
+        } else { // error
+            messageWrapper.className += ' text-center';
+            messageContent = `<div class="text-red-500 text-sm bg-red-50 p-3 rounded-lg inline-block">${escapeHtml(text)}</div>`;
+        }
+
+        messageWrapper.innerHTML = messageContent;
+        chatBox.appendChild(messageWrapper);
+        scrollToBottom();
+
+        // Return the content container for AI messages
+        if (role === 'ai') {
+            pElement = messageWrapper.querySelector('.ai-message-content');
+            if (text) {
+                updateMessageContent(pElement, text);
+            }
+            return pElement;
+        }
+
+        return messageWrapper;
+    }
+
+    /**
+     * HTML escape function.
+     */
+    function escapeHtml(unsafe) {
+        return unsafe
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    /**
+     * Sets the UI loading state.
+     */
+    function setUiLoading(isLoading) {
+        messageInput.disabled = isLoading;
+        sendButton.disabled = isLoading;
+
+        if (isLoading) {
+            loadingIndicator.classList.remove('hidden');
+            sendButton.textContent = '发送中...';
+        } else {
+            loadingIndicator.classList.add('hidden');
+            sendButton.textContent = '发送';
+        }
+    }
+
+    /**
+     * Scrolls the chat box to the bottom.
+     */
+    function scrollToBottom() {
+        requestAnimationFrame(() => {
+            chatBox.scrollTop = chatBox.scrollHeight;
+        });
+    }
+
+    /**
+     * Handles input field character count.
+     */
+    function updateCharCount() {
+        const remaining = 1000 - messageInput.value.length;
+        let countElement = document.querySelector('.char-count');
+        if (!countElement) {
+            // Create if it doesn't exist (e.g., initial load before DOMContentLoaded)
+            const footer = document.querySelector('footer');
+            const charCountDiv = footer.querySelector('div.text-xs.text-gray-500.mt-2.text-center');
+            countElement = document.createElement('span');
+            countElement.className = 'char-count float-right';
+            charCountDiv.appendChild(countElement);
+        }
+        countElement.textContent = `${remaining}/1000`;
+        countElement.style.color = remaining < 100 ? '#ef4444' : '#6b7280';
+    }
+
+
+    // --- Event Listeners ---
+    sendButton.addEventListener('click', sendMessage);
+
+    // Keyboard send message
+    messageInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            sendMessage();
+        }
+    });
+
+    // Toggle capabilities display
+    toggleCapabilitiesButton.addEventListener('click', () => {
+        const isHidden = capabilitiesContent.classList.contains('hidden');
+        if (isHidden) {
+            capabilitiesContent.classList.remove('hidden');
+            toggleIcon.textContent = '▲';
+        } else {
+            capabilitiesContent.classList.add('hidden');
+            toggleIcon.textContent = '▼';
+        }
+    });
+
+    // Input field focus and input events
+    messageInput.addEventListener('input', updateCharCount);
+
+    // Clean up on page unload
+    window.addEventListener('beforeunload', () => {
+        sseManager.closeCurrentConnection(); // Close current connection
+    });
+
+    // Handle page visibility changes
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            // Page hidden, do not close connection, keep receiving in background
+            console.log('Page hidden, connection remains active');
+        } else {
+            // Page re-visible, check connection status
+            console.log('Page re-visible');
+            sseManager.updateConnectionStatus('connected', '已就绪');
+        }
+    });
+
+    // --- Initialization ---
+
+    // Initialization after page load
+    document.addEventListener('DOMContentLoaded', () => {
+        messageInput.focus();
+        updateCharCount(); // Initialize character count
+        console.log('Chat application initialized, ChatID:', chatId);
+        connectSSE();
+    });
+
+    // Initial state setting
+    setUiLoading(false);
+
+    // Add keyboard shortcuts support
+    document.addEventListener('keydown', (event) => {
+        // Ctrl/Cmd + Enter for quick send
+        if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+            event.preventDefault();
+            sendMessage();
+        }
+
+        // Escape to clear input field
+        if (event.key === 'Escape' && document.activeElement === messageInput) {
+            messageInput.value = '';
+            updateCharCount();
+        }
+    });
+</script>
+</body>
+</html>
